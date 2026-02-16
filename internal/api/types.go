@@ -286,6 +286,8 @@ type SignSSHKeyData struct {
 	ValidAfter       string   `json:"validAfter"`
 	ValidBefore      string   `json:"validBefore"`
 	ExpiresInSeconds int      `json:"expiresIn"`
+	Hostname         string   `json:"hostname"` // hostname for SSH connection (returned by API)
+	User             string   `json:"user"`     // user for SSH connection (returned by API)
 }
 
 type SignSSHKeyResponse struct {

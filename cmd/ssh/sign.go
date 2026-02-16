@@ -23,7 +23,6 @@ func SignCmd() *cobra.Command {
 		ResourceID int
 		KeyFile    string
 		CertFile   string
-		Hostname   string
 	}{}
 
 	cmd := &cobra.Command{
@@ -87,12 +86,16 @@ func SignCmd() *cobra.Command {
 			utils.PrintTable([]string{"Field", "Value"}, signCertTableRows(signData))
 			fmt.Println()
 
-			hostname := opts.Hostname
+			hostname := signData.Hostname
 			if hostname == "" {
 				hostname = "<hostname>"
 			}
+			user := signData.User
+			if user == "" {
+				user = "<user>"
+			}
 			fmt.Println("Usage with system ssh (scp, tunnels, etc.):")
-			fmt.Printf("  ssh -i %q -o CertificateFile=%q %s\n", keyPath, certPath, hostname)
+			fmt.Printf("  ssh -i %q -o CertificateFile=%q %s@%s\n", keyPath, certPath, user, hostname)
 			fmt.Printf("  scp -i %q -o CertificateFile=%q ...\n", keyPath, certPath)
 		},
 	}
@@ -101,7 +104,6 @@ func SignCmd() *cobra.Command {
 	cmd.Flags().IntVar(&opts.ResourceID, "resource-id", 0, "Resource ID for key signing (required)")
 	cmd.Flags().StringVar(&opts.KeyFile, "key-file", "", "Path to write the private key (required)")
 	cmd.Flags().StringVar(&opts.CertFile, "cert-file", "", "Path to write the certificate (default: <key-file>-cert.pub)")
-	cmd.Flags().StringVar(&opts.Hostname, "hostname", "", "Hostname for the prefilled ssh example")
 
 	return cmd
 }

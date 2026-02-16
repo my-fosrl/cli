@@ -10,15 +10,17 @@ import (
 
 var (
 	errHostnameRequired = errors.New("--hostname is required")
-	errIdentityRequired = errors.New("identity file (-i) is required for the built-in SSH client")
+	errKeyRequired      = errors.New("private key required for built-in client (set -i or --private-key)")
 )
 
 func SSHCmd() *cobra.Command {
 	opts := struct {
-		User     string
-		Hostname string
-		Identity string
-		Exec     bool
+		User        string
+		Hostname    string
+		Identity    string
+		PrivateKey  string
+		Certificate string
+		Exec        bool
 	}{}
 
 	cmd := &cobra.Command{
@@ -29,8 +31,8 @@ func SSHCmd() *cobra.Command {
 			if opts.Hostname == "" {
 				return errHostnameRequired
 			}
-			if !opts.Exec && opts.Identity == "" {
-				return errIdentityRequired
+			if !opts.Exec && opts.Identity == "" && opts.PrivateKey == "" {
+				return errKeyRequired
 			}
 			return nil
 		},
@@ -39,6 +41,8 @@ func SSHCmd() *cobra.Command {
 				User:        opts.User,
 				Hostname:    opts.Hostname,
 				Identity:    opts.Identity,
+				PrivateKey:  opts.PrivateKey,
+				Certificate: opts.Certificate,
 				PassThrough: args,
 			}
 			var exitCode int
@@ -58,7 +62,9 @@ func SSHCmd() *cobra.Command {
 
 	cmd.Flags().StringVarP(&opts.User, "user", "u", "", "SSH login user (maps to ssh -l)")
 	cmd.Flags().StringVar(&opts.Hostname, "hostname", "", "Target host (required)")
-	cmd.Flags().StringVarP(&opts.Identity, "identity", "i", "", "Path to private key file (required for built-in client)")
+	cmd.Flags().StringVarP(&opts.Identity, "identity", "i", "", "Path to identity or private key file")
+	cmd.Flags().StringVar(&opts.PrivateKey, "private-key", "", "Path to private key file")
+	cmd.Flags().StringVar(&opts.Certificate, "certificate", "", "Path to certificate file (optional, for certificate auth)")
 	cmd.Flags().BoolVar(&opts.Exec, "exec", false, "Use system ssh binary instead of the built-in client")
 
 	// Allow arbitrary args after flags (e.g. after --) to pass through to ssh

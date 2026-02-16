@@ -58,7 +58,9 @@ func execExitCode(err error) int {
 type RunOpts struct {
 	User        string
 	Hostname    string
-	Identity    string
+	Identity    string // path to identity/private key (alias for private key)
+	PrivateKey  string // path to private key file
+	Certificate string // path to certificate file (optional)
 	PassThrough []string
 }
 
@@ -86,8 +88,15 @@ func buildExecSSHArgs(sshPath string, opts RunOpts) []string {
 	if opts.User != "" {
 		args = append(args, "-l", opts.User)
 	}
-	if opts.Identity != "" {
-		args = append(args, "-i", opts.Identity)
+	keyPath := opts.PrivateKey
+	if keyPath == "" {
+		keyPath = opts.Identity
+	}
+	if keyPath != "" {
+		args = append(args, "-i", keyPath)
+	}
+	if opts.Certificate != "" {
+		args = append(args, "-o", "CertificateFile="+opts.Certificate)
 	}
 	args = append(args, opts.Hostname)
 	args = append(args, opts.PassThrough...)

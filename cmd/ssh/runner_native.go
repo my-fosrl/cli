@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 
 	"github.com/mattn/go-isatty"
@@ -17,7 +18,7 @@ import (
 const nativeDefaultSSHPort = "22"
 
 // RunNative runs an interactive SSH session using the pure-Go client (golang.org/x/crypto/ssh).
-// It does not use the system ssh binary. Requires opts.Identity to be set (validated by caller).
+// It does not use the system ssh binary. Requires a private key (opts.Identity or opts.PrivateKey); opts.Certificate is optional.
 func RunNative(opts RunOpts) (int, error) {
 	addr, err := nativeSSHAddress(opts.Hostname)
 	if err != nil {
@@ -97,6 +98,12 @@ func RunNative(opts RunOpts) (int, error) {
 	return 0, nil
 }
 
+func looksLikeCertificate(data []byte) bool {
+	s := string(data)
+	return strings.Contains(s, "-cert-v01@openssh.com") || strings.Contains(s, "-cert@openssh.com") ||
+		strings.Contains(s, "ssh-rsa-cert") || strings.Contains(s, "ssh-ed25519-cert") || strings.Contains(s, "ecdsa-sha2-nistp256-cert")
+}
+
 func nativeSSHAddress(hostname string) (string, error) {
 	if hostname == "" {
 		return "", errors.New("hostname is empty")
@@ -108,13 +115,45 @@ func nativeSSHAddress(hostname string) (string, error) {
 }
 
 func nativeSSHClientConfig(opts RunOpts) (*ssh.ClientConfig, error) {
-	key, err := os.ReadFile(opts.Identity)
+	keyPath := opts.PrivateKey
+	if keyPath == "" {
+		keyPath = opts.Identity
+	}
+	if keyPath == "" {
+		return nil, errors.New("private key path required (set -i or --private-key)")
+	}
+
+	key, err := os.ReadFile(keyPath)
 	if err != nil {
-		return nil, fmt.Errorf("read identity file: %w", err)
+		return nil, fmt.Errorf("read private key: %w", err)
 	}
 	signer, err := ssh.ParsePrivateKey(key)
 	if err != nil {
+		if looksLikeCertificate(key) {
+			return nil, fmt.Errorf("parse private key: %w (hint: %s looks like a certificate file; use --certificate for the cert and -i or --private-key for the private key file)", err, keyPath)
+		}
 		return nil, fmt.Errorf("parse private key: %w", err)
+	}
+
+	authSigner := signer
+	if opts.Certificate != "" {
+		certBytes, err := os.ReadFile(opts.Certificate)
+		if err != nil {
+			return nil, fmt.Errorf("read certificate: %w", err)
+		}
+		// ParseAuthorizedKey handles OpenSSH cert format (single/multi-line, wrapped base64).
+		pubKey, _, _, _, err := ssh.ParseAuthorizedKey(certBytes)
+		if err != nil {
+			return nil, fmt.Errorf("parse certificate: %w", err)
+		}
+		cert, ok := pubKey.(*ssh.Certificate)
+		if !ok {
+			return nil, fmt.Errorf("certificate file is not an SSH certificate")
+		}
+		authSigner, err = ssh.NewCertSigner(cert, signer)
+		if err != nil {
+			return nil, fmt.Errorf("create cert signer: %w", err)
+		}
 	}
 
 	user := opts.User
@@ -130,7 +169,7 @@ func nativeSSHClientConfig(opts RunOpts) (*ssh.ClientConfig, error) {
 
 	return &ssh.ClientConfig{
 		User: user,
-		Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		Auth: []ssh.AuthMethod{ssh.PublicKeys(authSigner)},
 		// Host key verification disabled for simplicity; can be enhanced with known_hosts later.
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}, nil

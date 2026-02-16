@@ -18,7 +18,7 @@ import (
 const nativeDefaultSSHPort = "22"
 
 // RunNative runs an interactive SSH session using the pure-Go client (golang.org/x/crypto/ssh).
-// It does not use the system ssh binary. Requires a private key (opts.Identity or opts.PrivateKey); opts.Certificate is optional.
+// It does not use the system ssh binary. opts.PrivateKeyPEM and opts.Certificate must be set (JIT key + signed cert).
 func RunNative(opts RunOpts) (int, error) {
 	addr, err := nativeSSHAddress(opts.Hostname)
 	if err != nil {
@@ -115,40 +115,29 @@ func nativeSSHAddress(hostname string) (string, error) {
 }
 
 func nativeSSHClientConfig(opts RunOpts) (*ssh.ClientConfig, error) {
-	keyPath := opts.PrivateKey
-	if keyPath == "" {
-		keyPath = opts.Identity
-	}
-	if keyPath == "" {
-		return nil, errors.New("private key path required (set -i or --private-key)")
+	if opts.PrivateKeyPEM == "" {
+		return nil, errors.New("private key required (JIT flow)")
 	}
 
-	key, err := os.ReadFile(keyPath)
-	if err != nil {
-		return nil, fmt.Errorf("read private key: %w", err)
-	}
+	key := []byte(opts.PrivateKeyPEM)
 	signer, err := ssh.ParsePrivateKey(key)
 	if err != nil {
 		if looksLikeCertificate(key) {
-			return nil, fmt.Errorf("parse private key: %w (hint: %s looks like a certificate file; use --certificate for the cert and -i or --private-key for the private key file)", err, keyPath)
+			return nil, fmt.Errorf("parse private key: %w (hint: key material looks like a certificate)", err)
 		}
 		return nil, fmt.Errorf("parse private key: %w", err)
 	}
 
 	authSigner := signer
 	if opts.Certificate != "" {
-		certBytes, err := os.ReadFile(opts.Certificate)
-		if err != nil {
-			return nil, fmt.Errorf("read certificate: %w", err)
-		}
-		// ParseAuthorizedKey handles OpenSSH cert format (single/multi-line, wrapped base64).
+		certBytes := []byte(opts.Certificate)
 		pubKey, _, _, _, err := ssh.ParseAuthorizedKey(certBytes)
 		if err != nil {
 			return nil, fmt.Errorf("parse certificate: %w", err)
 		}
 		cert, ok := pubKey.(*ssh.Certificate)
 		if !ok {
-			return nil, fmt.Errorf("certificate file is not an SSH certificate")
+			return nil, fmt.Errorf("certificate is not an SSH certificate")
 		}
 		authSigner, err = ssh.NewCertSigner(cert, signer)
 		if err != nil {

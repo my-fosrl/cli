@@ -55,24 +55,33 @@ func execExitCode(err error) int {
 }
 
 // RunOpts is shared by both the exec and native SSH runners.
+// PrivateKeyPEM and Certificate are set just-in-time (JIT) before connect; no file paths.
 type RunOpts struct {
-	User        string
-	Hostname    string
-	Identity    string // path to identity/private key (alias for private key)
-	PrivateKey  string // path to private key file
-	Certificate string // path to certificate file (optional)
-	PassThrough []string
+	User          string
+	Hostname      string
+	PrivateKeyPEM string // in-memory private key (PEM, OpenSSH format)
+	Certificate   string // in-memory certificate from sign-key API
+	PassThrough   []string
 }
 
 // RunExec runs an interactive SSH session by executing the system ssh binary
 // (with a PTY when stdin is a terminal on Unix). Requires ssh to be installed.
+// opts.PrivateKeyPEM and opts.Certificate must be set (JIT key + signed cert).
 func RunExec(opts RunOpts) (int, error) {
 	sshPath, err := findExecSSHPath()
 	if err != nil {
 		return 1, err
 	}
 
-	argv := buildExecSSHArgs(sshPath, opts)
+	keyPath, certPath, cleanup, err := writeExecKeyFiles(opts)
+	if err != nil {
+		return 1, err
+	}
+	if cleanup != nil {
+		defer cleanup()
+	}
+
+	argv := buildExecSSHArgs(sshPath, opts.User, opts.Hostname, keyPath, certPath, opts.PassThrough)
 	cmd := exec.Command(argv[0], argv[1:]...)
 
 	usePTY := runtime.GOOS != "windows" && isatty.IsTerminal(os.Stdin.Fd())
@@ -83,23 +92,74 @@ func RunExec(opts RunOpts) (int, error) {
 	return runExecWithoutPTY(cmd)
 }
 
-func buildExecSSHArgs(sshPath string, opts RunOpts) []string {
-	args := []string{sshPath}
-	if opts.User != "" {
-		args = append(args, "-l", opts.User)
+// writeExecKeyFiles writes PrivateKeyPEM and Certificate to temp files for system ssh.
+// Returns keyPath, certPath, cleanup func, error.
+func writeExecKeyFiles(opts RunOpts) (keyPath, certPath string, cleanup func(), err error) {
+	if opts.PrivateKeyPEM == "" {
+		return "", "", nil, errors.New("private key required (JIT flow)")
 	}
-	keyPath := opts.PrivateKey
-	if keyPath == "" {
-		keyPath = opts.Identity
+	keyFile, err := os.CreateTemp("", "pangolin-ssh-key-*")
+	if err != nil {
+		return "", "", nil, err
+	}
+	if _, err := keyFile.WriteString(opts.PrivateKeyPEM); err != nil {
+		keyFile.Close()
+		os.Remove(keyFile.Name())
+		return "", "", nil, err
+	}
+	if err := keyFile.Chmod(0o600); err != nil {
+		keyFile.Close()
+		os.Remove(keyFile.Name())
+		return "", "", nil, err
+	}
+	if err := keyFile.Close(); err != nil {
+		os.Remove(keyFile.Name())
+		return "", "", nil, err
+	}
+	keyPath = keyFile.Name()
+
+	if opts.Certificate != "" {
+		certFile, err := os.CreateTemp("", "pangolin-ssh-cert-*")
+		if err != nil {
+			os.Remove(keyPath)
+			return "", "", nil, err
+		}
+		if _, err := certFile.WriteString(opts.Certificate); err != nil {
+			certFile.Close()
+			os.Remove(certFile.Name())
+			os.Remove(keyPath)
+			return "", "", nil, err
+		}
+		if err := certFile.Close(); err != nil {
+			os.Remove(certFile.Name())
+			os.Remove(keyPath)
+			return "", "", nil, err
+		}
+		certPath = certFile.Name()
+	}
+
+	cleanup = func() {
+		os.Remove(keyPath)
+		if certPath != "" {
+			os.Remove(certPath)
+		}
+	}
+	return keyPath, certPath, cleanup, nil
+}
+
+func buildExecSSHArgs(sshPath, user, hostname, keyPath, certPath string, passThrough []string) []string {
+	args := []string{sshPath}
+	if user != "" {
+		args = append(args, "-l", user)
 	}
 	if keyPath != "" {
 		args = append(args, "-i", keyPath)
 	}
-	if opts.Certificate != "" {
-		args = append(args, "-o", "CertificateFile="+opts.Certificate)
+	if certPath != "" {
+		args = append(args, "-o", "CertificateFile="+certPath)
 	}
-	args = append(args, opts.Hostname)
-	args = append(args, opts.PassThrough...)
+	args = append(args, hostname)
+	args = append(args, passThrough...)
 	return args
 }
 

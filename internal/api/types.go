@@ -273,3 +273,22 @@ type ApplyBlueprintResponse struct {
 	Succeeded   bool    `json:"succeeded"`
 	Contents    string  `json:"contents"`
 }
+
+type SignSSHKeyRequest struct {
+	PublicKey  string `json:"publicKey"`
+	ResourceID int    `json:"resourceId"`
+}
+
+type SignSSHKeyData struct {
+	Certificate      string   `json:"certificate"`
+	KeyID            string   `json:"keyId"`
+	ValidPrincipals  []string `json:"validPrincipals"`
+	ValidAfter       string   `json:"validAfter"`
+	ValidBefore      string   `json:"validBefore"`
+	ExpiresInSeconds int      `json:"expiresIn"`
+}
+
+type SignSSHKeyResponse struct {
+	Success bool           `json:"success"`
+	Data    SignSSHKeyData `json:"data"`
+}

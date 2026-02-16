@@ -360,6 +360,19 @@ func (c *Client) CheckOrgUserAccess(orgID, userID string) (*CheckOrgUserAccessRe
 	return &response, nil
 }
 
+func (c *Client) SignSSHKey(orgID string, req SignSSHKeyRequest) (*SignSSHKeyData, error) {
+	path := fmt.Sprintf("/org/%s/ssh/sign-key", orgID)
+	var response SignSSHKeyResponse
+	err := c.Post(path, req, &response)
+	if err != nil {
+		return nil, err
+	}
+	if !response.Success {
+		return nil, fmt.Errorf("ssh sign-key failed")
+	}
+	return &response.Data, nil
+}
+
 // GetClient gets a client by ID
 func (c *Client) GetClient(clientID int) (*GetClientResponse, error) {
 	path := fmt.Sprintf("/client/%d", clientID)

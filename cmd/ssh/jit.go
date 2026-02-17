@@ -2,29 +2,58 @@ package ssh
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/fosrl/cli/internal/api"
 	"github.com/fosrl/cli/internal/config"
 	"github.com/fosrl/cli/internal/sshkeys"
 )
 
+const (
+	pollInitialDelay  = 250 * time.Millisecond
+	pollStartInterval = 250 * time.Millisecond
+	pollBackoffSteps  = 6
+)
+
 // GenerateAndSignKey generates an Ed25519 key pair and signs the public key via the API.
-// Returns private key (PEM), public key (authorized_keys line), certificate, and sign response data. No files are written.
 func GenerateAndSignKey(client *api.Client, orgID string, resourceID string) (privPEM, pubKey, cert string, signData *api.SignSSHKeyData, err error) {
 	privPEM, pubKey, err = sshkeys.GenerateKeyPair()
 	if err != nil {
 		return "", "", "", nil, fmt.Errorf("generate key pair: %w", err)
 	}
 
-	data, err := client.SignSSHKey(orgID, api.SignSSHKeyRequest{
+	initResp, err := client.SignSSHKey(orgID, api.SignSSHKeyRequest{
 		PublicKey: pubKey,
 		Resource:  resourceID,
 	})
 	if err != nil {
 		return "", "", "", nil, fmt.Errorf("sign SSH key: %w", err)
 	}
+	messageID := initResp.MessageID
+	if messageID == 0 {
+		return "", "", "", nil, fmt.Errorf("sign SSH key: API did not return a message ID")
+	}
 
-	return privPEM, pubKey, data.Certificate, data, nil
+	time.Sleep(pollInitialDelay)
+
+	interval := pollStartInterval
+	for i := 0; i <= pollBackoffSteps; i++ {
+		msg, pollErr := client.GetRoundTripMessage(messageID)
+		if pollErr != nil {
+			return "", "", "", nil, fmt.Errorf("sign SSH key: poll: %w", pollErr)
+		}
+		if msg.Complete {
+			if msg.Error != nil && *msg.Error != "" {
+				return "", "", "", nil, fmt.Errorf("sign SSH key: %s", *msg.Error)
+			}
+			return privPEM, pubKey, initResp.Certificate, initResp, nil
+		}
+		if i < pollBackoffSteps {
+			time.Sleep(interval)
+			interval *= 2
+		}
+	}
+	return "", "", "", nil, fmt.Errorf("sign SSH key: timed out waiting for round-trip message")
 }
 
 // ResolveOrgID returns orgID from the flag or the active account. Returns empty string and nil error if both are empty.

@@ -280,6 +280,7 @@ type SignSSHKeyRequest struct {
 }
 
 type SignSSHKeyData struct {
+	MessageID        int64    `json:"messageId"`
 	Certificate      string   `json:"certificate"`
 	KeyID            string   `json:"keyId"`
 	ValidPrincipals  []string `json:"validPrincipals"`
@@ -288,6 +289,14 @@ type SignSSHKeyData struct {
 	ExpiresInSeconds int      `json:"expiresIn"`
 	Hostname         string   `json:"sshHost"`     // hostname for SSH connection (returned by API)
 	User             string   `json:"sshUsername"` // user for SSH connection (returned by API)
+}
+
+type RoundTripMessage struct {
+	MessageID   int64   `json:"messageId"`
+	Complete    bool    `json:"complete"`
+	SentAt      int64   `json:"sentAt"`     // epoch seconds
+	ReceivedAt  int64   `json:"receivedAt"`  // epoch seconds
+	Error       *string `json:"error,omitempty"`
 }
 
 type SignSSHKeyResponse struct {

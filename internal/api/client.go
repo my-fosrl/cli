@@ -370,6 +370,16 @@ func (c *Client) SignSSHKey(orgID string, req SignSSHKeyRequest) (*SignSSHKeyDat
 	return &data, nil
 }
 
+// GetRoundTripMessage polls the round-trip message endpoint for status and optional result.
+func (c *Client) GetRoundTripMessage(messageID int64) (*RoundTripMessage, error) {
+	path := fmt.Sprintf("/ws/round-trip-message/%d", messageID)
+	var msg RoundTripMessage
+	if err := c.Get(path, &msg); err != nil {
+		return nil, err
+	}
+	return &msg, nil
+}
+
 // GetClient gets a client by ID
 func (c *Client) GetClient(clientID int) (*GetClientResponse, error) {
 	path := fmt.Sprintf("/client/%d", clientID)

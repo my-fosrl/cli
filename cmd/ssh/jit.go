@@ -27,11 +27,11 @@ func GenerateAndSignKey(client *api.Client, orgID string, resourceID string) (pr
 		Resource:  resourceID,
 	})
 	if err != nil {
-		return "", "", "", nil, fmt.Errorf("sign SSH key: %w", err)
+		return "", "", "", nil, fmt.Errorf("SSH error: %w", err)
 	}
 	messageID := initResp.MessageID
 	if messageID == 0 {
-		return "", "", "", nil, fmt.Errorf("sign SSH key: API did not return a message ID")
+		return "", "", "", nil, fmt.Errorf("SSH error: API did not return a message ID")
 	}
 
 	time.Sleep(pollInitialDelay)
@@ -40,11 +40,11 @@ func GenerateAndSignKey(client *api.Client, orgID string, resourceID string) (pr
 	for i := 0; i <= pollBackoffSteps; i++ {
 		msg, pollErr := client.GetRoundTripMessage(messageID)
 		if pollErr != nil {
-			return "", "", "", nil, fmt.Errorf("sign SSH key: poll: %w", pollErr)
+			return "", "", "", nil, fmt.Errorf("SSH error: poll: %w", pollErr)
 		}
 		if msg.Complete {
 			if msg.Error != nil && *msg.Error != "" {
-				return "", "", "", nil, fmt.Errorf("sign SSH key: %s", *msg.Error)
+				return "", "", "", nil, fmt.Errorf("SSH error: %s", *msg.Error)
 			}
 			return privPEM, pubKey, initResp.Certificate, initResp, nil
 		}
@@ -53,7 +53,7 @@ func GenerateAndSignKey(client *api.Client, orgID string, resourceID string) (pr
 			interval *= 2
 		}
 	}
-	return "", "", "", nil, fmt.Errorf("sign SSH key: timed out waiting for round-trip message")
+	return "", "", "", nil, fmt.Errorf("SSH error: timed out waiting for round-trip message")
 }
 
 // ResolveOrgID returns orgID from the flag or the active account. Returns empty string and nil error if both are empty.

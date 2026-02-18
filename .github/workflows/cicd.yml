@@ -416,7 +416,7 @@ jobs:
         shell: bash
 
       - name: Generate SBOM (SPDX JSON)
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        uses: aquasecurity/trivy-action@c1824fd6edce30d7ab345a9989de00bbd46ef284 # v0.34.0
         with:
           image-ref: ${{ env.GHCR_IMAGE }}@${{ steps.build.outputs.digest }}
           format: spdx-json
@@ -579,7 +579,7 @@ jobs:
 
       # - name: Trivy scan (GHCR image)
       #   id: trivy
-      #   uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+      #   uses: aquasecurity/trivy-action@c1824fd6edce30d7ab345a9989de00bbd46ef284 # v0.34.0
       #   with:
       #     image-ref: ${{ env.GHCR_IMAGE }}@${{ steps.build.outputs.digest }}
       #     format: sarif

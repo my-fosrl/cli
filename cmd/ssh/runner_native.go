@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -42,7 +41,7 @@ func RunNative(opts RunOpts) (int, error) {
 	defer session.Close()
 
 	stdinFd := int(os.Stdin.Fd())
-	useRaw := isatty.IsTerminal(uintptr(stdinFd)) && runtime.GOOS != "windows"
+	useRaw := isatty.IsTerminal(uintptr(stdinFd))
 	if useRaw {
 		oldState, err := term.MakeRaw(stdinFd)
 		if err != nil {

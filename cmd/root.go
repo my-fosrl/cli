@@ -44,14 +44,27 @@ func RootCommand(initResources bool) (*cobra.Command, error) {
 	}
 
 	cmd.AddCommand(auth.AuthCommand())
-	cmd.AddCommand(authdaemon.AuthDaemonCmd())
+	if authDaemonCmd := authdaemon.AuthDaemonCmd(); authDaemonCmd != nil {
+		cmd.AddCommand(authDaemonCmd)
+	}
 	cmd.AddCommand(apply.ApplyCommand())
 	cmd.AddCommand(selectcmd.SelectCmd())
-	cmd.AddCommand(up.UpCmd())
-	cmd.AddCommand(down.DownCmd())
-	cmd.AddCommand(logs.LogsCmd())
+	
+	// Platform-specific commands - nil on unsupported platforms
+	if upCmd := up.UpCmd(); upCmd != nil {
+		cmd.AddCommand(upCmd)
+	}
+	if downCmd := down.DownCmd(); downCmd != nil {
+		cmd.AddCommand(downCmd)
+	}
+	if logsCmd := logs.LogsCmd(); logsCmd != nil {
+		cmd.AddCommand(logsCmd)
+	}
+	if statusCmd := status.StatusCmd(); statusCmd != nil {
+		cmd.AddCommand(statusCmd)
+	}
+	
 	cmd.AddCommand(ssh.SSHCmd())
-	cmd.AddCommand(status.StatusCmd())
 	cmd.AddCommand(update.UpdateCmd())
 	cmd.AddCommand(version.VersionCmd())
 	cmd.AddCommand(login.LoginCmd())

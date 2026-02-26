@@ -3,6 +3,7 @@ package ssh
 import (
 	"errors"
 	"os"
+	"runtime"
 
 	"github.com/fosrl/cli/internal/api"
 	"github.com/fosrl/cli/internal/config"
@@ -12,10 +13,11 @@ import (
 )
 
 var (
-	errHostnameRequired   = errors.New("API did not return a hostname for the connection")
-	errResourceIDRequired = errors.New("Resource (alias or identifier) is required")
-	errOrgRequired        = errors.New("Organization is required")
-	errNoClientRunning    = errors.New("No client is currently running. Start the client first with `pangolin up`")
+	errHostnameRequired       = errors.New("API did not return a hostname for the connection")
+	errResourceIDRequired     = errors.New("Resource (alias or identifier) is required; example: pangolin ssh my-server.internal")
+	errOrgRequired            = errors.New("Organization is required")
+	errNoClientRunning        = errors.New("No client is currently running. Start the client first with `pangolin up`")
+	errNoClientRunningWindows = errors.New("No client is currently running. Start the client first in the system tray")
 )
 
 func SSHCmd() *cobra.Command {
@@ -26,7 +28,7 @@ func SSHCmd() *cobra.Command {
 	}{}
 
 	cmd := &cobra.Command{
-		Use:   "ssh <resource alias or identifier> [-- passthrough...]",
+		Use:   "ssh <resource alias or identifier>",
 		Short: "Run an interactive SSH session",
 		Long:  `Run an SSH client in the terminal. Generates a key pair and signs it just-in-time, then connects to the target resource.`,
 		PreRunE: func(c *cobra.Command, args []string) error {
@@ -37,10 +39,21 @@ func SSHCmd() *cobra.Command {
 			return nil
 		},
 		Run: func(c *cobra.Command, args []string) {
-			client := olm.NewClient("")
-			if !client.IsRunning() {
-				logger.Error("%v", errNoClientRunning)
-				os.Exit(1)
+			if runtime.GOOS != "windows" {
+				client := olm.NewClient("")
+				if !client.IsRunning() {
+					logger.Error("%v", errNoClientRunning)
+					os.Exit(1)
+				}
+			} else {
+				// check if the named pipe exists by trying to open it. If it doesn't exist, the client is not running.
+				pipePath := `\\.\pipe\pangolin-olm`
+				pipeFile, err := os.Open(pipePath)
+				if err != nil {
+					logger.Error("%v", errNoClientRunningWindows)
+					os.Exit(1)
+				}
+				pipeFile.Close()
 			}
 
 			apiClient := api.FromContext(c.Context())
@@ -72,8 +85,13 @@ func SSHCmd() *cobra.Command {
 				PassThrough:   passThrough,
 			}
 
+			// On Windows, use the system ssh binary by default (better terminal/agent support).
+			useExec := opts.Exec || runtime.GOOS == "windows"
+			if len(passThrough) > 0 && !useExec {
+				logger.Warning("Passthrough arguments are ignored by the built-in client. Use --exec to pass them to the system ssh.")
+			}
 			var exitCode int
-			if opts.Exec {
+			if useExec {
 				exitCode, err = RunExec(runOpts)
 			} else {
 				exitCode, err = RunNative(runOpts)
@@ -88,8 +106,6 @@ func SSHCmd() *cobra.Command {
 
 	cmd.Flags().BoolVar(&opts.Exec, "exec", false, "Use system ssh binary instead of the built-in client")
 	cmd.Flags().IntVarP(&opts.Port, "port", "p", 0, "SSH port (default: 22)")
-
-	cmd.Args = cobra.MinimumNArgs(1)
 
 	cmd.AddCommand(SignCmd())
 
